@@ -3,6 +3,7 @@ import logging
 import sys
 import os
 import base64
+import traceback
 
 import asyncio
 from aiocache import cached
@@ -219,6 +220,7 @@ async def chat_completion_tools_handler(
                         tool_result = await tool_function(**tool_function_params)
 
                 except Exception as e:
+                    log.debug(f"Error: {e}, trace={traceback.format_exc()}")
                     tool_result = str(e)
 
                 tool_result_files = []
@@ -681,6 +683,7 @@ def apply_params_to_form_data(form_data, model):
                     convert_logit_bias_input_to_json(params["logit_bias"])
                 )
             except Exception as e:
+                log.debug(f"Error: {e}, trace={traceback.format_exc()}")
                 print(f"Error parsing logit_bias: {e}")
 
     return form_data
@@ -1848,7 +1851,7 @@ async def process_chat_response(
                             if done:
                                 pass
                             else:
-                                log.debug("Error: ", e)
+                                log.debug(f"Error: {e}, trace={traceback.format_exc()}")
                                 continue
 
                     if content_blocks:
@@ -1915,7 +1918,7 @@ async def process_chat_response(
                                 tool_call.get("function", {}).get("arguments", "{}")
                             )
                         except Exception as e:
-                            log.debug(e)
+                            log.debug(f"Error: {e}, trace={traceback.format_exc()}")
                             # Fallback to JSON parsing
                             try:
                                 tool_function_params = json.loads(
@@ -1968,6 +1971,7 @@ async def process_chat_response(
                                     )
 
                             except Exception as e:
+                                log.debug(f"Error: {e}, trace={traceback.format_exc()}")
                                 tool_result = str(e)
 
                         tool_result_files = []
@@ -2033,7 +2037,7 @@ async def process_chat_response(
                         else:
                             break
                     except Exception as e:
-                        log.debug(e)
+                        log.debug(f"Error: {e}, trace={traceback.format_exc()}")
                         break
 
                 if DETECT_CODE_INTERPRETER:
@@ -2106,70 +2110,38 @@ async def process_chat_response(
                                 log.debug(f"Code interpreter output: {output}")
 
                                 if isinstance(output, dict):
-                                    stdout = output.get("stdout", "")
+                                    for source in ("stdout", "result"):
+                                        source = output.get("stdout", "")
 
-                                    if isinstance(stdout, str):
-                                        stdoutLines = stdout.split("\n")
-                                        for idx, line in enumerate(stdoutLines):
-                                            if "data:image/png;base64" in line:
-                                                id = str(uuid4())
+                                        if isinstance(source, str):
+                                            sourceLines = source.split("\n")
+                                            for idx, line in enumerate(sourceLines):
+                                                if "data:image/png;base64" in line:
+                                                    id = str(uuid4())
 
-                                                # ensure the path exists
-                                                os.makedirs(
-                                                    os.path.join(CACHE_DIR, "images"),
-                                                    exist_ok=True,
-                                                )
+                                                    # ensure the path exists
+                                                    (CACHE_DIR / "images").mkdir(parents=True, exist_ok=True)
 
-                                                image_path = os.path.join(
-                                                    CACHE_DIR,
-                                                    f"images/{id}.png",
-                                                )
+                                                    image_path = CACHE_DIR / f"images/{id}.png"
+                                                    log.debug(f"Saving image to {image_path} (type={type(image_path)})")
 
-                                                with open(image_path, "wb") as f:
-                                                    f.write(
-                                                        base64.b64decode(
-                                                            line.split(",")[1]
+                                                    with image_path.open("wb") as f:
+                                                        log.debug(f"Writing image to {f.name}")
+                                                        f.write(
+                                                            base64.b64decode(
+                                                                line.split(",")[1]
+                                                            )
                                                         )
+
+                                                    log.debug(f"Replacing image in line {idx} with ID /cache/images/{id}.png")
+                                                    sourceLines[idx] = (
+                                                        f"![Output Image {idx}](/cache/images/{id}.png)"
                                                     )
 
-                                                stdoutLines[idx] = (
-                                                    f"![Output Image {idx}](/cache/images/{id}.png)"
-                                                )
+                                            output[source] = "\n".join(sourceLines)
 
-                                        output["stdout"] = "\n".join(stdoutLines)
-
-                                    result = output.get("result", "")
-
-                                    if isinstance(result, str):
-                                        resultLines = result.split("\n")
-                                        for idx, line in enumerate(resultLines):
-                                            if "data:image/png;base64" in line:
-                                                id = str(uuid4())
-
-                                                # ensure the path exists
-                                                os.makedirs(
-                                                    os.path.join(CACHE_DIR, "images"),
-                                                    exist_ok=True,
-                                                )
-
-                                                image_path = os.path.join(
-                                                    CACHE_DIR,
-                                                    f"images/{id}.png",
-                                                )
-
-                                                with open(image_path, "wb") as f:
-                                                    f.write(
-                                                        base64.b64decode(
-                                                            line.split(",")[1]
-                                                        )
-                                                    )
-
-                                                resultLines[idx] = (
-                                                    f"![Output Image {idx}](/cache/images/{id}.png)"
-                                                )
-
-                                        output["result"] = "\n".join(resultLines)
                         except Exception as e:
+                            log.debug(f"Error processing code output: {e}, trace={traceback.format_exc()}")
                             output = str(e)
 
                         content_blocks[-1]["output"] = output
@@ -2214,7 +2186,7 @@ async def process_chat_response(
                             else:
                                 break
                         except Exception as e:
-                            log.debug(e)
+                            log.debug(f"Error: {e}, trace={traceback.format_exc()}")
                             break
 
                 title = Chats.get_chat_title_by_id(metadata["chat_id"])

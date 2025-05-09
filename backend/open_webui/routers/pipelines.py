@@ -204,7 +204,7 @@ async def upload_pipeline(
             detail="Only Python (.py) files are allowed.",
         )
 
-    upload_folder = f"{CACHE_DIR}/pipelines"
+    upload_folder = f"{LOCAL_CACHE_DIR}/pipelines"
     os.makedirs(upload_folder, exist_ok=True)
     file_path = os.path.join(upload_folder, file.filename)
 

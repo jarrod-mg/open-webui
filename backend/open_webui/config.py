@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 import requests
 from pydantic import BaseModel
 from sqlalchemy import JSON, Column, DateTime, Integer, func
+from s3path import S3Path
 
 from open_webui.env import (
     DATA_DIR,
@@ -786,9 +787,17 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 # Cache DIR
 ####################################
 
-CACHE_DIR = DATA_DIR / "cache"
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
+LOCAL_CACHE_DIR = DATA_DIR / "cache"
+LOCAL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
+cache_dir = os.getenv("CACHE_DIR", None)
+if cache_dir:
+    if cache_dir.startswith("s3://"):
+        CACHE_DIR = S3Path(cache_dir[4:])
+    else:
+        CACHE_DIR = Path(cache_dir).resolve()
+else:
+    CACHE_DIR = LOCAL_CACHE_DIR
 
 ####################################
 # DIRECT CONNECTIONS

@@ -33,6 +33,7 @@ from open_webui.config import (
     WHISPER_MODEL_AUTO_UPDATE,
     WHISPER_MODEL_DIR,
     CACHE_DIR,
+    LOCAL_CACHE_DIR,
     WHISPER_LANGUAGE,
 )
 
@@ -804,7 +805,7 @@ def transcription(
         filename = f"{id}.{ext}"
         contents = file.file.read()
 
-        file_dir = f"{CACHE_DIR}/audio/transcriptions"
+        file_dir = f"{LOCAL_CACHE_DIR}/audio/transcriptions"
         os.makedirs(file_dir, exist_ok=True)
         file_path = f"{file_dir}/{filename}"
 
@@ -823,8 +824,18 @@ def transcription(
                 )
 
             data = transcribe(request, file_path)
-            file_path = file_path.split("/")[-1]
-            return {**data, "filename": file_path}
+            filename = file_path.split("/")[-1]
+
+            if LOCAL_CACHE_DIR != CACHE_DIR:
+                # Move the file to the cache directory
+                remote_file_path = CACHE_DIR / "audio" / "transcriptions" / filename
+                with open(file_path, "rb") as f:
+                    with remote_file_path.open("wb") as remote_f:
+                        remote_f.write(f.read())
+                os.remove(file_path)
+                file_path = remote_file_path
+
+            return {**data, "filename": filename}
         except Exception as e:
             log.exception(e)
 

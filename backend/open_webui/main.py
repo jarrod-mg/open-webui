@@ -14,6 +14,9 @@ from urllib.parse import urlencode, parse_qs, urlparse
 from pydantic import BaseModel
 from sqlalchemy import text
 
+import boto3
+import botocore
+
 from typing import Optional
 from aiocache import cached
 import aiohttp
@@ -426,6 +429,67 @@ class SPAStaticFiles(StaticFiles):
             else:
                 raise ex
 
+
+class S3StaticFiles(StaticFiles):
+    """
+    A custom StaticFiles class that serves files from an S3 bucket.
+    Used when CACHE_DIR has a 'bucket' property indicating it's an S3Path.
+    """
+    def __init__(self, directory=None, **kwargs):
+        super().__init__(directory=None, **kwargs)  # We don't use the directory parameter
+        self.s3_path = directory
+        self.bucket_name = getattr(directory, 'bucket', None)
+        self.prefix = getattr(directory, 'key', '')
+        
+        if not self.prefix.endswith('/') and self.prefix:
+            self.prefix += '/'
+            
+        self.s3_client = boto3.client('s3')
+        log.info(f"Initialized S3StaticFiles with bucket: {self.bucket_name}, prefix: {self.prefix}")
+
+    async def get_response(self, path: str, scope):
+        if path.startswith('/'):
+            path = path[1:]
+            
+        full_path = f"{self.prefix}{path}"
+        log.debug(f"S3StaticFiles: Attempting to get {full_path} from bucket {self.bucket_name}")
+        
+        try:
+            # Check if the object exists
+            head_response = self.s3_client.head_object(
+                Bucket=self.bucket_name,
+                Key=full_path
+            )
+            
+            # Get content type
+            content_type = head_response.get('ContentType')
+            if not content_type:
+                content_type = mimetypes.guess_type(path)[0] or 'application/octet-stream'
+            
+            # Get the object
+            s3_response = self.s3_client.get_object(
+                Bucket=self.bucket_name,
+                Key=full_path
+            )
+            
+            # Create a streaming response
+            return StreamingResponse(
+                content=s3_response['Body'],
+                media_type=content_type,
+                headers={
+                    'Content-Length': str(s3_response['ContentLength']),
+                    'ETag': s3_response.get('ETag', ''),
+                    'Last-Modified': s3_response.get('LastModified', '').strftime('%a, %d %b %Y %H:%M:%S GMT') 
+                    if s3_response.get('LastModified') else '',
+                }
+            )
+            
+        except botocore.exceptions.ClientError as e:
+            if e.response['Error']['Code'] == '404':
+                raise HTTPException(status_code=404, detail="File not found")
+            else:
+                log.error(f"S3 error: {str(e)}")
+                raise e
 
 print(
     rf"""
@@ -1536,7 +1600,10 @@ async def healthcheck_with_db():
 
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-app.mount("/cache", StaticFiles(directory=CACHE_DIR), name="cache")
+if hasattr(CACHE_DIR, "bucket"):
+    app.mount("/cache", S3StaticFiles(directory=CACHE_DIR), name="cache")
+else:
+    app.mount("/cache", StaticFiles(directory=CACHE_DIR), name="cache")
 
 
 def swagger_ui_html(*args, **kwargs):

@@ -196,7 +196,7 @@ async def speech(request: Request, user=Depends(get_verified_user)):
         body = await request.body()
         name = hashlib.sha256(body).hexdigest()
 
-        SPEECH_CACHE_DIR = CACHE_DIR / "audio" / "speech"
+        SPEECH_CACHE_DIR = LOCAL_CACHE_DIR / "audio" / "speech"
         SPEECH_CACHE_DIR.mkdir(parents=True, exist_ok=True)
         file_path = SPEECH_CACHE_DIR.joinpath(f"{name}.mp3")
         file_body_path = SPEECH_CACHE_DIR.joinpath(f"{name}.json")
