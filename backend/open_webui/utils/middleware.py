@@ -2091,69 +2091,39 @@ async def process_chat_response(
                                 log.debug(f"Code interpreter output: {output}")
 
                                 if isinstance(output, dict):
-                                    stdout = output.get("stdout", "")
+                                    for sourceField in ("stdout", "result"):
+                                        source = output.get(sourceField, "")
 
-                                    if isinstance(stdout, str):
-                                        stdoutLines = stdout.split("\n")
-                                        for idx, line in enumerate(stdoutLines):
-                                            if "data:image/png;base64" in line:
-                                                id = str(uuid4())
+                                        if isinstance(source, str):
+                                            sourceLines = source.split("\n")
+                                            for idx, line in enumerate(sourceLines):
+                                                if "data:image/png;base64" in line:
+                                                    id = str(uuid4())
 
-                                                # ensure the path exists
-                                                os.makedirs(
-                                                    os.path.join(CACHE_DIR, "images"),
-                                                    exist_ok=True,
-                                                )
-
-                                                image_path = os.path.join(
-                                                    CACHE_DIR,
-                                                    f"images/{id}.png",
-                                                )
-
-                                                with open(image_path, "wb") as f:
-                                                    f.write(
-                                                        base64.b64decode(
-                                                            line.split(",")[1]
-                                                        )
+                                                    # ensure the path exists
+                                                    os.makedirs(
+                                                        os.path.join(CACHE_DIR, "images"),
+                                                        exist_ok=True,
                                                     )
 
-                                                stdoutLines[idx] = (
-                                                    f"![Output Image {idx}](/cache/images/{id}.png)"
-                                                )
-
-                                        output["stdout"] = "\n".join(stdoutLines)
-
-                                    result = output.get("result", "")
-
-                                    if isinstance(result, str):
-                                        resultLines = result.split("\n")
-                                        for idx, line in enumerate(resultLines):
-                                            if "data:image/png;base64" in line:
-                                                id = str(uuid4())
-
-                                                # ensure the path exists
-                                                os.makedirs(
-                                                    os.path.join(CACHE_DIR, "images"),
-                                                    exist_ok=True,
-                                                )
-
-                                                image_path = os.path.join(
-                                                    CACHE_DIR,
-                                                    f"images/{id}.png",
-                                                )
-
-                                                with open(image_path, "wb") as f:
-                                                    f.write(
-                                                        base64.b64decode(
-                                                            line.split(",")[1]
-                                                        )
+                                                    image_path = os.path.join(
+                                                        CACHE_DIR,
+                                                        f"images/{id}.png",
                                                     )
 
-                                                resultLines[idx] = (
-                                                    f"![Output Image {idx}](/cache/images/{id}.png)"
-                                                )
+                                                    with open(image_path, "wb") as f:
+                                                        f.write(
+                                                            base64.b64decode(
+                                                                line.split(",")[1]
+                                                            )
+                                                        )
 
-                                        output["result"] = "\n".join(resultLines)
+                                                    sourceLines[idx] = (
+                                                        f"![Output Image {idx}](/cache/images/{id}.png)"
+                                                    )
+
+                                            output[source] = "\n".join(sourceLines)
+
                         except Exception as e:
                             output = str(e)
 
