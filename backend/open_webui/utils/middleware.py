@@ -3,6 +3,7 @@ import logging
 import sys
 import os
 import base64
+import io
 
 import asyncio
 from aiocache import cached
@@ -18,7 +19,7 @@ from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor
 
 
-from fastapi import Request, HTTPException
+from fastapi import Request, HTTPException, UploadFile
 from starlette.responses import Response, StreamingResponse
 
 
@@ -41,6 +42,7 @@ from open_webui.routers.pipelines import (
     process_pipeline_inlet_filter,
     process_pipeline_outlet_filter,
 )
+from open_webui.routers.files import upload_file
 
 from open_webui.utils.webhook import post_webhook
 
@@ -2039,7 +2041,7 @@ async def process_chat_response(
                         )
 
                         retries += 1
-                        log.debug(f"Attempt count: {retries}")
+                        log.debug(f"Attempt count: {retries}, intepreter {request.app.state.config.CODE_INTERPRETER_ENGINE}")
 
                         output = ""
                         try:
@@ -2050,6 +2052,7 @@ async def process_chat_response(
                                     request.app.state.config.CODE_INTERPRETER_ENGINE
                                     == "pyodide"
                                 ):
+                                    log.debug("running code using pyodide")
                                     output = await event_caller(
                                         {
                                             "type": "execute:python",
@@ -2066,6 +2069,7 @@ async def process_chat_response(
                                     request.app.state.config.CODE_INTERPRETER_ENGINE
                                     == "jupyter"
                                 ):
+                                    log.debug("running code using jupyter")
                                     output = await execute_code_jupyter(
                                         request.app.state.config.CODE_INTERPRETER_JUPYTER_URL,
                                         code,
@@ -2091,40 +2095,44 @@ async def process_chat_response(
                                 log.debug(f"Code interpreter output: {output}")
 
                                 if isinstance(output, dict):
+                                    log.debug(f"output is a dict: {output.keys()}")
                                     for sourceField in ("stdout", "result"):
+                                        log.debug(f"processing output[{sourceField}]")
                                         source = output.get(sourceField, "")
+                                        log.debug(f"value is {source}")
 
                                         if isinstance(source, str):
+                                            log.debug(f"{sourceField} is a string")
                                             sourceLines = source.split("\n")
+                                            log.debug(f"{source} lines = {sourceLines}")
                                             for idx, line in enumerate(sourceLines):
                                                 if "data:image/png;base64" in line:
-                                                    id = str(uuid4())
-
-                                                    # ensure the path exists
-                                                    os.makedirs(
-                                                        os.path.join(CACHE_DIR, "images"),
-                                                        exist_ok=True,
+                                                    log.debug(f"line {idx} is an image")
+                                                    content_type = line.split(',')[0].split(':')[1]
+                                                    file_data = io.BytesIO(base64.b64decode(line.split(',')[1]))
+                                                    file_name = f"image-{metadata['chat_id']}-{metadata['message_id']}-{sourceField}-{idx}.png"
+                                                    file = UploadFile(
+                                                        filename=file_name,
+                                                        file=file_data,
+                                                        headers={"content-type": content_type},
                                                     )
-
-                                                    image_path = os.path.join(
-                                                        CACHE_DIR,
-                                                        f"images/{id}.png",
-                                                    )
-
-                                                    with open(image_path, "wb") as f:
-                                                        f.write(
-                                                            base64.b64decode(
-                                                                line.split(",")[1]
-                                                            )
-                                                        )
+                                                    log.debug(f"creating file {file}")
+                                                    #file_response = upload_file(request, file, user=user)
+                                                    class DummyFileResponse:
+                                                        id = "dummyId"
+                                                    file_response = DummyFileResponse()
+                                                    log.debug(f"created file {file_response}")
 
                                                     sourceLines[idx] = (
-                                                        f"![Output Image {idx}](/cache/images/{id}.png)"
+                                                        f"![Output Image {idx}](/api/v1/files/{file_response.id}/content)"
                                                     )
 
-                                            output[source] = "\n".join(sourceLines)
+                                            output[sourceField] = "\n".join(sourceLines)
+                                            log(f"{sourceField} after processing = {output[sourceField]}")
 
                         except Exception as e:
+                            import traceback
+                            log.debug(f"caught exception {e}\n{traceback.format_exc()}")
                             output = str(e)
 
                         content_blocks[-1]["output"] = output
