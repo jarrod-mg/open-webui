@@ -2109,6 +2109,7 @@ async def process_chat_response(
                                                         headers={"content-type": content_type},
                                                     )
                                                     file_response = upload_file(request, file, user=user)
+                                                    Chats.add_output_file_id_to_chat(metadata["chat_id"], file_response.id)
 
                                                     sourceLines[idx] = (
                                                         f"![Output Image {idx}](/api/v1/files/{file_response.id}/content)"
