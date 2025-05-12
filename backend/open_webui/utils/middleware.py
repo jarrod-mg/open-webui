@@ -2052,7 +2052,6 @@ async def process_chat_response(
                                     request.app.state.config.CODE_INTERPRETER_ENGINE
                                     == "pyodide"
                                 ):
-                                    log.debug("running code using pyodide")
                                     output = await event_caller(
                                         {
                                             "type": "execute:python",
@@ -2069,7 +2068,6 @@ async def process_chat_response(
                                     request.app.state.config.CODE_INTERPRETER_ENGINE
                                     == "jupyter"
                                 ):
-                                    log.debug("running code using jupyter")
                                     output = await execute_code_jupyter(
                                         request.app.state.config.CODE_INTERPRETER_JUPYTER_URL,
                                         code,
@@ -2092,23 +2090,17 @@ async def process_chat_response(
                                         "stdout": "Code interpreter engine not configured."
                                     }
 
-                                log.debug(f"Code interpreter output: {output}")
 
                                 if isinstance(output, dict):
-                                    log.debug(f"output is a dict: {output.keys()}")
                                     for sourceField in ("stdout", "result"):
-                                        log.debug(f"processing output[{sourceField}]")
                                         source = output.get(sourceField, "")
-                                        log.debug(f"value is {source}")
 
                                         if isinstance(source, str):
-                                            log.debug(f"{sourceField} is a string")
                                             sourceLines = source.split("\n")
-                                            log.debug(f"{source} lines = {sourceLines}")
                                             for idx, line in enumerate(sourceLines):
                                                 if "data:image/png;base64" in line:
-                                                    log.debug(f"line {idx} is an image")
-                                                    content_type = line.split(',')[0].split(':')[1]
+                                                    # line looks like data:image/png;base64,<base64data>
+                                                    content_type = line.split(',')[0].split(';')[0].split(':')[1]
                                                     file_data = io.BytesIO(base64.b64decode(line.split(',')[1]))
                                                     file_name = f"image-{metadata['chat_id']}-{metadata['message_id']}-{sourceField}-{idx}.png"
                                                     file = UploadFile(
@@ -2116,23 +2108,16 @@ async def process_chat_response(
                                                         file=file_data,
                                                         headers={"content-type": content_type},
                                                     )
-                                                    log.debug(f"creating file {file}")
-                                                    #file_response = upload_file(request, file, user=user)
-                                                    class DummyFileResponse:
-                                                        id = "dummyId"
-                                                    file_response = DummyFileResponse()
-                                                    log.debug(f"created file {file_response}")
+                                                    file_response = upload_file(request, file, user=user)
 
                                                     sourceLines[idx] = (
                                                         f"![Output Image {idx}](/api/v1/files/{file_response.id}/content)"
                                                     )
 
                                             output[sourceField] = "\n".join(sourceLines)
-                                            log(f"{sourceField} after processing = {output[sourceField]}")
 
                         except Exception as e:
-                            import traceback
-                            log.debug(f"caught exception {e}\n{traceback.format_exc()}")
+                            log.exception(e)
                             output = str(e)
 
                         content_blocks[-1]["output"] = output
