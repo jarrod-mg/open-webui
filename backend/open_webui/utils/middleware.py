@@ -4,6 +4,7 @@ import sys
 import os
 import base64
 import io
+import traceback
 
 import asyncio
 from aiocache import cached
@@ -219,6 +220,34 @@ async def chat_completion_tools_handler(
                     else:
                         tool_function = tool["callable"]
                         tool_result = await tool_function(**tool_function_params)
+
+                    log.debug(f"{tool_result=}")
+                    if "outputFiles" in tool_result and isinstance(tool_result["outputFiles"], list):
+                        # Iterate over each output file. If they have a "content" field:
+                        # * use File.upload_file to upload the content (as binary) to the storage provider
+                        # * replace the content field with a markdown link to the new file
+                        for i in range(len(tool_result["outputFiles"])):
+                            output_file = tool_result["outputFiles"][i]
+                            if "content" in output_file:
+                                try:
+                                    file_content = base64.b64decode(output_file["content"])
+                                    file = UploadFile(
+                                        filename=output_file.get("name", "file.obj"),
+                                        file=io.BytesIO(file_content),
+                                        headers={"content-type": output_file.get("contentType", "application/octet-stream")}
+                                    )
+                                    file_response = upload_file(request, file, user=user)
+                                    title = output_file.get("title", "file")
+                                    link = f"[{title}](/api/v1/files/{file_response.id}/content)"
+                                    if output_file.get("inline", False):
+                                        link = "!" + link
+                                    tool_result["outputFiles"][i] = {
+                                        **output_file,
+                                        "content": link,
+                                    }
+                                except Exception as e:
+                                    log.exception(e)
+                                    tool_result["outputFiles"][i]["content"] = "Error saving file: {e}\nTraceback:\n{traceback.format_exc()}"
 
                 except Exception as e:
                     tool_result = str(e)

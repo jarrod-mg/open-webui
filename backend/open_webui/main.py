@@ -8,6 +8,7 @@ import shutil
 import sys
 import time
 import random
+import traceback
 
 from contextlib import asynccontextmanager
 from urllib.parse import urlencode, parse_qs, urlparse
@@ -1194,7 +1195,7 @@ async def chat_completion(
         )
 
     except Exception as e:
-        log.debug(f"Error processing chat payload: {e}")
+        log.debug(f"Error processing chat payload: {e}\nTraceback:\n{traceback.format_exc()}")
         if metadata.get("chat_id") and metadata.get("message_id"):
             # Update the chat message with the error
             Chats.upsert_message_to_chat_by_id_and_message_id(
