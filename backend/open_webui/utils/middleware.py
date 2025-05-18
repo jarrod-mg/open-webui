@@ -163,6 +163,7 @@ async def chat_completion_tools_handler(
     payload = get_tools_function_calling_payload(
         body["messages"], task_model_id, tools_function_calling_prompt
     )
+    log.debug(f"tools {payload=}")
 
     try:
         response = await generate_chat_completion(request, form_data=payload, user=user)
@@ -724,6 +725,7 @@ async def process_chat_payload(request, form_data, user, metadata, model):
         request.app.state.config.TASK_MODEL_EXTERNAL,
         models,
     )
+    log.debug(f"{task_model_id=}")
 
     events = []
     sources = []
@@ -732,6 +734,7 @@ async def process_chat_payload(request, form_data, user, metadata, model):
     model_knowledge = model.get("info", {}).get("meta", {}).get("knowledge", False)
 
     if model_knowledge:
+        log.debug("has knowledge")
         await event_emitter(
             {
                 "type": "status",
@@ -868,6 +871,7 @@ async def process_chat_payload(request, form_data, user, metadata, model):
     if tools_dict:
         if metadata.get("function_calling") == "native":
             # If the function calling is native, then call the tools function calling handler
+            log.debug("native tools handling")
             metadata["tools"] = tools_dict
             form_data["tools"] = [
                 {"type": "function", "function": tool.get("spec", {})}
@@ -875,6 +879,7 @@ async def process_chat_payload(request, form_data, user, metadata, model):
             ]
         else:
             # If the function calling is not native, then call the tools function calling handler
+            log.debug("default tools handling")
             try:
                 form_data, flags = await chat_completion_tools_handler(
                     request, form_data, extra_params, user, models, tools_dict

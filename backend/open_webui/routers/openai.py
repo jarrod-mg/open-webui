@@ -597,6 +597,8 @@ async def generate_chat_completion(
     user=Depends(get_verified_user),
     bypass_filter: Optional[bool] = False,
 ):
+    log.debug(f"openai generate_chat_completion: {request=}")
+    log.debug(f"openai generate_chat_completion: {form_data=}")
     if BYPASS_MODEL_ACCESS_CONTROL:
         bypass_filter = True
 
@@ -691,6 +693,7 @@ async def generate_chat_completion(
         )
 
     payload = json.dumps(payload)
+    log.debug(f"openai generate_chat_completion post-processes {payload=}")
 
     r = None
     session = None
@@ -733,9 +736,14 @@ async def generate_chat_completion(
 
         # Check if response is SSE
         if "text/event-stream" in r.headers.get("Content-Type", ""):
+            log.debug("is a streaming response")
             streaming = True
+            async def log_stream_content():
+                async for chunk in r.content:
+                    log.debug(f"Stream chunk: {chunk.decode('utf-8')}")
+                    yield chunk
             return StreamingResponse(
-                r.content,
+                log_stream_content(),
                 status_code=r.status,
                 headers=dict(r.headers),
                 background=BackgroundTask(
@@ -743,8 +751,10 @@ async def generate_chat_completion(
                 ),
             )
         else:
+            log.debug("is not a streaming response")
             try:
                 response = await r.json()
+                log.debug(f"{response=}")
             except Exception as e:
                 log.error(e)
                 response = await r.text()

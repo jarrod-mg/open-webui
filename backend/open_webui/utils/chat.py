@@ -162,6 +162,7 @@ async def generate_chat_completion(
     bypass_filter: bool = False,
 ):
     log.debug(f"generate_chat_completion: {form_data}")
+    log.debug(f"generate_chat_completion {request.state=}")
     if BYPASS_MODEL_ACCESS_CONTROL:
         bypass_filter = True
 
@@ -187,6 +188,7 @@ async def generate_chat_completion(
         raise Exception("Model not found")
 
     model = models[model_id]
+    log.debug(f"generate_chat_completion: using model {model_id}")
 
     if getattr(request.state, "direct", False):
         return await generate_direct_chat_completion(
@@ -198,9 +200,11 @@ async def generate_chat_completion(
             try:
                 check_model_access(user, model)
             except Exception as e:
+                log.debug(f"user does not have access")
                 raise e
 
         if model.get("owned_by") == "arena":
+            log.debug("arena owned model")
             model_ids = model.get("info", {}).get("meta", {}).get("model_ids")
             filter_mode = model.get("info", {}).get("meta", {}).get("filter_mode")
             if model_ids and filter_mode == "exclude":
@@ -249,11 +253,13 @@ async def generate_chat_completion(
                 }
 
         if model.get("pipe"):
+            log.debug("pipe model")
             # Below does not require bypass_filter because this is the only route the uses this function and it is already bypassing the filter
             return await generate_function_chat_completion(
                 request, form_data, user=user, models=models
             )
         if model.get("owned_by") == "ollama":
+            log.debug("ollama model")
             # Using /ollama/api/chat endpoint
             form_data = convert_payload_openai_to_ollama(form_data)
             response = await generate_ollama_chat_completion(
@@ -272,12 +278,15 @@ async def generate_chat_completion(
             else:
                 return convert_response_ollama_to_openai(response)
         else:
-            return await generate_openai_chat_completion(
+            log.debug("openai model")
+            result = await generate_openai_chat_completion(
                 request=request,
                 form_data=form_data,
                 user=user,
                 bypass_filter=bypass_filter,
             )
+            log.debug("openai {result=}")
+            return result
 
 
 chat_completion = generate_chat_completion

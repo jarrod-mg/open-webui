@@ -1134,10 +1134,13 @@ async def chat_completion(
     form_data: dict,
     user=Depends(get_verified_user),
 ):
+    log.debug(f"/api/chat/completions: {request.app.state=}")
+    log.debug(f"/api/chat/completions: {form_data}")
     if not request.app.state.MODELS:
         await get_all_models(request, user=user)
 
     model_item = form_data.pop("model_item", {})
+    log.debug(f"/api/chat/completions: {model_item=}")
     tasks = form_data.pop("background_tasks", None)
 
     metadata = {}
@@ -1186,6 +1189,7 @@ async def chat_completion(
                 else {}
             ),
         }
+        log.debug(f"/api/chat/completions: {metadata=}")
 
         request.state.metadata = metadata
         form_data["metadata"] = metadata
